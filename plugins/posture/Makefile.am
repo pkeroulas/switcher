@@ -11,7 +11,8 @@ plugins_LTLIBRARIES = \
     libposturemeshserialization.la \
     libposturesource.la \
     libposturesolidify.la \
-    libposturescan3dGPU.la
+    libposturescan3dGPU.la \
+    libposturecaptureraw.la
 
 #libposturecolorize info
 libposturecolorize_la_SOURCES = \
@@ -362,6 +363,38 @@ libposturescan3dGPU_la_CXXFLAGS = \
 
 libposturescan3dGPU_la_include_HEADERS = \
     posture_scan3dGPU.hpp
+
+#libposturecaptureraw info
+libposturecaptureraw_la_SOURCES = \
+    posture_captureraw.cpp
+
+libposturecaptureraw_la_includedir = \
+    $(includedir)/switcher-$(LIBSWITCHER_API_VERSION)/switcher
+
+libposturecaptureraw_la_LDFLAGS = \
+    $(GLIB_LIBS) \
+    $(GST_LIBS) \
+    $(GMODULE_LIBS) \
+    $(JSONGLIB_LIBS) \
+    $(POSTURE_LIBS) \
+    $(SHMDATA_LIBS) \
+    -avoid-version \
+    -L$(top_builddir)/switcher/.libs \
+    -lswitcher-@LIBSWITCHER_API_VERSION@
+
+libposturecaptureraw_la_CXXFLAGS = \
+    $(GLIB_CFLAGS) \
+    $(GMODULE_CFLAGS) \
+    $(GST_CFLAGS) \
+    $(JSONGLIB_CFLAGS) \
+    $(POSTURE_CFLAGS) \
+    $(SHMDATA_CFLAGS) \
+    -I$(top_srcdir) \
+    -DG_LOG_DOMAIN=\"switcher\"
+
+libposturecaptureraw_la_include_HEADERS = \
+    posture_captureraw.hpp
+
 
 #### plugin unit test
  AM_CFLAGS = \

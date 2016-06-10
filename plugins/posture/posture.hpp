@@ -26,4 +26,7 @@
 #define POINTCLOUD_TYPE_COMPRESSED "application/x-pcd"
 #define POLYGONMESH_TYPE_BASE "application/x-polymesh"
 #define POLYGONMESH_TYPE_MULTIMESH "application/x-multimesh"
+#define COMPOSITE_DEPTHMAP_16BITS_TYPE_COMPRESSED "application/x-composite-zcam16c"
+#define COMPOSITE_RGB_TYPE_BASE "application/x-composite-rgb"
+
 #endif
