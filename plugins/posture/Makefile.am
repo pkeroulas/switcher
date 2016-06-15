@@ -12,7 +12,8 @@ plugins_LTLIBRARIES = \
     libposturesource.la \
     libposturesolidify.la \
     libposturescan3dGPU.la \
-    libposturecaptureraw.la
+    libposturecaptureraw.la \
+    libposturedirectreconstruct.la
 
 #libposturecolorize info
 libposturecolorize_la_SOURCES = \
@@ -395,6 +396,36 @@ libposturecaptureraw_la_CXXFLAGS = \
 libposturecaptureraw_la_include_HEADERS = \
     posture_captureraw.hpp
 
+#libposturedirectreconstruct info
+libposturedirectreconstruct_la_SOURCES = \
+    posture_directreconstruct.cpp
+
+libposturedirectreconstruct_la_includedir = \
+    $(includedir)/switcher-$(LIBSWITCHER_API_VERSION)/switcher
+
+libposturedirectreconstruct_la_LDFLAGS = \
+    $(GLIB_LIBS) \
+    $(GST_LIBS) \
+    $(GMODULE_LIBS) \
+    $(JSONGLIB_LIBS) \
+    $(POSTURE_LIBS) \
+    $(SHMDATA_LIBS) \
+    -avoid-version \
+    -L$(top_builddir)/switcher/.libs \
+    -lswitcher-@LIBSWITCHER_API_VERSION@
+
+libposturedirectreconstruct_la_CXXFLAGS = \
+    $(GLIB_CFLAGS) \
+    $(GMODULE_CFLAGS) \
+    $(GST_CFLAGS) \
+    $(JSONGLIB_CFLAGS) \
+    $(POSTURE_CFLAGS) \
+    $(SHMDATA_CFLAGS) \
+    -I$(top_srcdir) \
+    -DG_LOG_DOMAIN=\"switcher\"
+
+libposturedirectreconstruct_la_include_HEADERS = \
+    posture_directreconstruct.hpp
 
 #### plugin unit test
  AM_CFLAGS = \

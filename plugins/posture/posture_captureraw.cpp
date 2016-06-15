@@ -169,6 +169,7 @@ void PostureCaptureRaw::update_loop() {
     std::vector<unsigned char> compositeDepth = cameraPackager_->getCompositeDepth(depth_dims);
 
     // write out to shmdata
+    // NOTE: we assume all cameras have the same dimensions as camera #0
     if (compositeTexture.size() > 0 && compositeDepth.size() > 0) 
     {
       if (!depth_writer_ ||
@@ -180,7 +181,9 @@ void PostureCaptureRaw::update_loop() {
             std2::make_unique<ShmdataWriter>(this,
                                              make_file_name("depth"),
                                              compositeDepth.size() * 2, // why 2?
-                                             data_type);
+                                             data_type + ", nCams=(int)" + to_string(depth_dims.size()) +
+                                             ", width=(int)"  + to_string(depth_dims[0][0]) +
+                                             ", height=(int)" + to_string(depth_dims[0][1]));
 
         if (!depth_writer_) {
           g_warning("Unable to create depth writer");
