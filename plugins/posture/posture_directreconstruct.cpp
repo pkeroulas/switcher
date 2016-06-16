@@ -539,16 +539,6 @@ bool PostureDirectReconstruct::init() {
   return true;
 }
 
-bool PostureDirectReconstruct::all(const vector<bool>& status) {
-  for (auto s : status)
-    if (!s) return false;
-
-  return true;
-}
-
-void PostureDirectReconstruct::zero(vector<bool>& status) {
-  for (uint32_t i = 0; i < status.size(); ++i) status[i] = false;
-}
 
 // void PostureDirectReconstruct::cb_frame_cloud(
 //     int index, pcl::PointCloud<pcl::PointXYZRGBNormal>::Ptr cloud) {
