@@ -23,7 +23,7 @@ SWITCHER_MAKE_QUIDDITY_DOCUMENTATION(
     "depth images to textured mesh",
     "video",
     "writer/device",
-    "Create a mesh with texture coordinates from depth cameras",
+    "Create a mesh with texture coordinates from composite depth images from multiple cameras",
     "LGPL",
     "Emmanuel Durand and Sebastien Paquet");
 
