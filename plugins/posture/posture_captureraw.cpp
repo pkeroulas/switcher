@@ -184,7 +184,7 @@ void PostureCaptureRaw::update_loop() {
             compositeDepth.size() * 2,  // why 2?
             "video/x-raw,format=(string)GRAY16_BE,width=(int)640,height=(int)" +
                 to_string(camera_nbr_ * depth_dims[0][1]) +
-                ",framerate=30/1,nCams=(int) + to_string(camera_nbr_)");
+                ",framerate=30/1,nCams=(int)" + to_string(camera_nbr_));
         // data_type + ", nCams=(int)" + to_string(depth_dims.size()) +
         // ", width=(int)" + to_string(depth_dims[0][0]) +
         // ", height=(int)" + to_string(depth_dims[0][1]));
