@@ -17,17 +17,19 @@ using namespace pcl;
 using namespace posture;
 
 namespace switcher {
-SWITCHER_MAKE_QUIDDITY_DOCUMENTATION(
-    PostureDirectReconstruct,
-    "posturedirectreconstruct",
-    "depth images to textured mesh",
-    "video",
-    "writer/device",
-    "Create a mesh with texture coordinates from composite depth images from multiple cameras",
-    "LGPL",
-    "Emmanuel Durand and Sebastien Paquet");
+SWITCHER_MAKE_QUIDDITY_DOCUMENTATION(PostureDirectReconstruct,
+                                     "posturedirectreconstruct",
+                                     "Depth images to textured mesh",
+                                     "video",
+                                     "reader/writer",
+                                     "Create a mesh with texture coordinates "
+                                     "from composite depth images from "
+                                     "multiple cameras",
+                                     "LGPL",
+                                     "Emmanuel Durand and Sebastien Paquet");
 
-PostureDirectReconstruct::PostureDirectReconstruct(const std::string&) {
+PostureDirectReconstruct::PostureDirectReconstruct(const std::string&)
+    : shmcntr_(static_cast<Quiddity*>(this)) {
   calibration_reader_ = std2::make_unique<CalibrationReader>("default.kvc");
   register_ = std2::make_unique<Register>();
 }
@@ -95,7 +97,47 @@ bool PostureDirectReconstruct::setDimensions(string caps) {
   return true;
 }
 
+bool PostureDirectReconstruct::connect(std::string shmdata_socket_path) {
+  unique_lock<mutex> connectLock(connect_mutex_);
 
+  depthDataReader_ = std2::make_unique<ShmdataFollower>(
+      this,
+      shmdata_socket_path,
+      [=](void* data,
+          size_t size) {  // 1- feed shmdata buffer into depthImages_
+        std::unique_lock<std::mutex> lock(depth_mutex_);
+
+        // we'll need to uncompress the compositeDepthData then convert it to 16
+        // bit
+        // auto decompressedData = snappy::decompress(data) // TODO: write
+        // appropriate code here (gitg search snappy)
+        uint8_t* decompressedData = (uint8_t*)data;
+
+        unique_lock<mutex> lockDepth(depth_mutex_);
+
+        // Split the composite depth image and fill all the depthImages_ buffers
+        size_t offsetInBytes = 0;
+        for (int i = 0; i < camera_nbr_; ++i) {
+          int imgSize = depthImages_dims_[i][0] * depthImages_dims_[i][1];
+          int sizeInBytes = imgSize * sizeof(uint16_t);
+          depthImages_[i].resize(imgSize);
+          memcpy(depthImages_[i].data(),
+                 decompressedData + offsetInBytes,
+                 sizeInBytes);
+          offsetInBytes += sizeInBytes;
+        }
+        if (offsetInBytes != size) throw(9999);
+        lockDepth.unlock();
+      },  // 2- caps specifies what kind of data is in the buffer
+      [=](const string& caps) {
+        cout << "caps ===> " << caps << endl;
+        // use caps to fill in number of cameras and depth dimensions
+        // "application/x-composite-zcam16c,nCams=(int)3,width=(int)640,height=(int)480"
+        setDimensions(caps);
+      });
+
+  return true;
+}
 
 bool PostureDirectReconstruct::start() {
   // cameras_.clear();
@@ -110,83 +152,15 @@ bool PostureDirectReconstruct::start() {
           (uint32_t)camera_nbr_)
     return false;
 
-  // for (int i = 0; i < camera_nbr_; ++i) {
-  //   cameras_.emplace_back(new posture::ZCamera());
-  //   cameras_.back()->setCaptureMode(
-  //       (posture::ZCamera::CaptureMode)capture_modes_enum_.get());
-  //   cameras_.back()->setCalibration(
-  //       calibration_reader_->getCalibrationParams()[i]);
-  //   cameras_.back()->setDeviceIndex(i);
-
-  //   cameras_.back()->setCallbackCloud(
-  //       [=](void*, pcl::PointCloud<pcl::PointXYZRGBNormal>::Ptr cloud) {
-  //         cb_frame_cloud(i, cloud);
-  //       },
-  //       nullptr);
-
-  //   cameras_.back()->setCallbackDepth(
-  //       [=](void*, std::vector<uint8_t>& depth, int width, int height) {
-  //         cb_frame_depth(i, depth, width, height);
-  //       },
-  //       nullptr);
-
-  //   cameras_.back()->setCallbackRgb(
-  //       [=](void*, std::vector<uint8_t>& rgb, int width, int height) {
-  //         cb_frame_RGB(i, rgb, width, height);
-  //       },
-  //       nullptr);
-  // }
-
-  // Here, we connect to the proper shmdata, so that we will get 
-  unique_ptr<shmdata::Follower> depthDataReader;
-
-  // something to output any errors, warnings, etc. from shmData reading
-  ConsoleLogger logger;
-
-  // a Follower needs to be given 3 functions: (see reader.hpp)
-  // 1) what to do upon receiving data
-  // 2) what to do upon server connection
-  // 3) what to do upon server disconnection
-  // AND a logger to receive any errors or warnings
-  depthDataReader = unique_ptr<shmdata::Follower>(new shmdata::Follower("/tmp/compositedepth", // TODO: set appropriate filename
-      [&](void* data, size_t size) { // 1- feed shmdata buffer into depthImages_ 
-          std::unique_lock<std::mutex> lock(depth_mutex_);
-
-          // we'll need to uncompress the compositeDepthData then convert it to 16 bit
-          // auto decompressedData = snappy::decompress(data) // TODO: write appropriate code here (gitg search snappy)
-          uint8_t* decompressedData = (uint8_t*)data;
-
-          unique_lock<mutex> lockDepth(depth_mutex_);
-
-          // Split the composite depth image and fill all the depthImages_ buffers
-          int offsetInBytes = 0;
-          for (int i = 0; i < camera_nbr_; ++i) 
-          { 
-            int imgSize = depthImages_dims_[i][0] * depthImages_dims_[i][1];
-            int sizeInBytes = imgSize * sizeof(uint16_t);
-            depthImages_[i].resize(imgSize);
-            memcpy(depthImages_[i].data(), decompressedData + offsetInBytes, sizeInBytes);
-          }
-          lockDepth.unlock();
-
-      }, // 2- caps specifies what kind of data is in the buffer
-      [=](const string& caps) {
-          cout << "caps ===> " << caps << endl;
-          // use caps to fill in number of cameras and depth dimensions 
-          // "application/x-composite-zcam16c,nCams=(int)3,width=(int)640,height=(int)480"
-          setDimensions(caps);
-      },  // 3- do nothing
-      [&](){},
-&logger));    
-
+  // std2::make_unique instead
   directMesher_ = unique_ptr<posture::DirectMesher>(new posture::DirectMesher());
   directMesher_->setCalibration(calibration_reader_->getCalibrationParams());
 
   meshSerializer_= unique_ptr<posture::MeshSerializer>(new posture::MeshSerializer());
   meshSerializer_->setCompress(false); // to feed faster into Blender
 
-  update_loop_started_ = true;
-  update_thread_ = thread([&]() { update_loop(); });
+  // update_loop_started_ = true;
+  // update_thread_ = thread([&]() { update_loop(); });
 
   return true;
 }
@@ -355,28 +329,23 @@ void PostureDirectReconstruct::update_loop() {
 bool PostureDirectReconstruct::init() {
   init_startable(this);
 
-  // pmanage<MPtr(&PContainer::make_selection)>(
-  //     "capture_mode",
-  //     [this](const size_t& val) {
-  //       capture_modes_enum_.select(val);
-  //       return true;
-  //     },
-  //     [this]() { return capture_modes_enum_.get(); },
-  //     "Capture mode",
-  //     "Capture mode for the cameras",
-  //     capture_modes_enum_);
-
-  pmanage<MPtr(&PContainer::make_int)>("camera_nbr",
-                                       [this](const int& val) {
-                                         camera_nbr_ = std::max(1, val);
-                                         return true;
-                                       },
-                                       [this]() { return camera_nbr_; },
-                                       "Number of cameras",
-                                       "Number of cameras to grab from",
-                                       camera_nbr_,
-                                       1,
-                                       7);
+  shmcntr_.install_connect_method(
+      [this](const std::string path) { return connect(path); },
+      [this](const std::string path) { return disconnect(path); },
+      [this]() { return disconnect_all(); },
+      [this](const std::string caps) { return can_sink_caps(caps); },
+      8);
+  // pmanage<MPtr(&PContainer::make_int)>("camera_nbr",
+  //                                      [this](const int& val) {
+  //                                        camera_nbr_ = std::max(1, val);
+  //                                        return true;
+  //                                      },
+  //                                      [this]() { return camera_nbr_; },
+  //                                      "Number of cameras",
+  //                                      "Number of cameras to grab from",
+  //                                      camera_nbr_,
+  //                                      1,
+  //                                      7);
 
   // pmanage<MPtr(&PContainer::make_bool)>(
   //     "compress_mesh",
@@ -535,41 +504,21 @@ bool PostureDirectReconstruct::init() {
   //     0,
   //     15);
 
-
   return true;
 }
 
+bool PostureDirectReconstruct::disconnect(std::string) {
+  // std::lock_guard<mutex> lock(mutex_);
+  return true;
+}
 
-// void PostureDirectReconstruct::cb_frame_cloud(
-//     int index, pcl::PointCloud<pcl::PointXYZRGBNormal>::Ptr cloud) {
-//   unique_lock<mutex> lockCamera(camera_mutex_);
-//   register_->setInputCloud(index, cloud);
-// }
+bool PostureDirectReconstruct::disconnect_all() {
+  // source_id_ = 0;
+  return true;
+}
 
-// void PostureDirectReconstruct::cb_frame_depth(int index,
-//                                       std::vector<unsigned char>& depth,
-//                                       int width,
-//                                       int height) {
-//   unique_lock<mutex> lockCamera(update_mutex_, std::try_to_lock);
-//   if (lockCamera.owns_lock()) {
-//     solidifyGPU_->setInputDepthMap(index, depth, width, height);
-//     bool already_updated = cameras_updated_[index];
-//     cameras_updated_[index] = true;
-//     if (already_updated || all(cameras_updated_)) {
-//       zero(cameras_updated_);
-//       update_wanted_ = true;
-//       update_cv_.notify_one();
-//     }
-//   }
-// }
-
-// void PostureDirectReconstruct::cb_frame_RGB(int index,
-//                                     std::vector<unsigned char>& rgb,
-//                                     int width,
-//                                     int height) {
-//   unique_lock<mutex> lock(camera_mutex_);
-//   images_[index] = rgb;
-//   images_dims_[index] = {(uint32_t)width, (uint32_t)height, 3u};
-// }
+bool PostureDirectReconstruct::can_sink_caps(std::string caps) {
+  return (caps != "");  // (caps == POLYGONMESH_TYPE_BASE);
+}
 
 }  // namespace switcher

@@ -43,6 +43,7 @@ class PostureDirectReconstruct : public Quiddity, public StartableQuiddity {
   bool stop();
 
  private:
+  ShmdataConnector shmcntr_;
   std::string calibration_path_{"default.kvc"};
   bool setDimensions(std::string caps);
 
@@ -83,6 +84,8 @@ class PostureDirectReconstruct : public Quiddity, public StartableQuiddity {
   std::condition_variable update_cv_;
   std::thread update_thread_;
 
+  std::unique_ptr<ShmdataFollower> depthDataReader_{};
+  std::mutex connect_mutex_{};
   std::unique_ptr<ShmdataWriter> mesh_writer_{nullptr};
 
   bool init() final;
@@ -95,6 +98,11 @@ class PostureDirectReconstruct : public Quiddity, public StartableQuiddity {
                       std::vector<unsigned char>& depth,
                       int width,
                       int height);
+
+  bool connect(std::string shmdata_socket_path);
+  bool disconnect(std::string shmName);
+  bool disconnect_all();
+  bool can_sink_caps(std::string caps);
 };
 
 SWITCHER_DECLARE_PLUGIN(PostureDirectReconstruct);
