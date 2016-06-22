@@ -38,7 +38,8 @@ bool PostureCaptureRaw::start() {
 
   //images_.resize(camera_nbr_);
   //images_dims_.resize(camera_nbr_);
-  cameras_updated_.resize(camera_nbr_);
+  rgbCameras_updated_.resize(camera_nbr_);
+  depthCameras_updated_.resize(camera_nbr_);
 
   cameraPackager_ = std2::make_unique<CamDataPackagerImpl>(camera_nbr_);
 
@@ -177,13 +178,16 @@ void PostureCaptureRaw::update_loop() {
       {
         auto data_type = string(COMPOSITE_DEPTHMAP_16BITS_TYPE_COMPRESSED); // defined in ./posture.hpp
         depth_writer_.reset();
-        depth_writer_ =
-            std2::make_unique<ShmdataWriter>(this,
-                                             make_file_name("depth"),
-                                             compositeDepth.size() * 2, // why 2?
-                                             data_type + ", nCams=(int)" + to_string(depth_dims.size()) +
-                                             ", width=(int)"  + to_string(depth_dims[0][0]) +
-                                             ", height=(int)" + to_string(depth_dims[0][1]));
+        depth_writer_ = std2::make_unique<ShmdataWriter>(
+            this,
+            make_file_name("depth"),
+            compositeDepth.size() * 2,  // why 2?
+            "video/x-raw,format=(string)GRAY16_BE,width=(int)640,height=(int)" +
+                to_string(camera_nbr_ * depth_dims[0][1]) +
+                ",framerate=30/1,nCams=(int) + to_string(camera_nbr_)");
+        // data_type + ", nCams=(int)" + to_string(depth_dims.size()) +
+        // ", width=(int)" + to_string(depth_dims[0][0]) +
+        // ", height=(int)" + to_string(depth_dims[0][1]));
 
         if (!depth_writer_) {
           g_warning("Unable to create depth writer");
@@ -335,10 +339,11 @@ void PostureCaptureRaw::cb_frame_depth(int index,
 
     cameraPackager_->StoreDepth(index, depth16, width, height);
 
-    bool already_updated = cameras_updated_[index];
-    cameras_updated_[index] = true;
-    if (already_updated || all(cameras_updated_)) {
-      zero(cameras_updated_);
+    bool already_updated = depthCameras_updated_[index];
+    depthCameras_updated_[index] = true;
+    if ((already_updated || all(depthCameras_updated_)) &&
+        all(rgbCameras_updated_)) {
+      zero(depthCameras_updated_);
       update_wanted_ = true;
       update_cv_.notify_one();
     }
@@ -351,6 +356,7 @@ void PostureCaptureRaw::cb_frame_RGB(int index,
                                     int height) {
   unique_lock<mutex> lock(camera_mutex_);
   cameraPackager_->StoreRGB(index, rgb, width, height);
+  rgbCameras_updated_[index] = true;
 }
 
 }  // namespace switcher

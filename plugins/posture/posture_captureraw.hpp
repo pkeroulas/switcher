@@ -55,8 +55,9 @@ class PostureCaptureRaw : public Quiddity, public StartableQuiddity {
   PropertyBase::prop_id_t register_id_;
   bool reload_calibration_{false};
 
-  std::vector<bool> cameras_updated_{};
-  
+  std::vector<bool> rgbCameras_updated_{};
+  std::vector<bool> depthCameras_updated_{};
+
   // TODO: eventually change into CamDataPackager
   std::unique_ptr<posture::CamDataPackagerImpl> cameraPackager_{nullptr};
 
