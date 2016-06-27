@@ -1,5 +1,4 @@
 #include "./posture_captureraw.hpp"
-#include "switcher/std2.hpp"
 
 #include <functional>
 #include <iostream>
@@ -8,7 +7,6 @@
 #include <boost/make_shared.hpp>
 
 #include "switcher/scope-exit.hpp"
-#include "switcher/std2.hpp"
 
 using namespace std;
 using namespace posture;
@@ -25,8 +23,8 @@ SWITCHER_MAKE_QUIDDITY_DOCUMENTATION(
     "Sebastien Paquet");
 
 PostureCaptureRaw::PostureCaptureRaw(const std::string&) {
-  calibration_reader_ = std2::make_unique<CalibrationReader>("default.kvc");
-  register_ = std2::make_unique<Register>();
+  calibration_reader_ = make_unique<CalibrationReader>("default.kvc");
+  register_ = make_unique<Register>();
 }
 
 PostureCaptureRaw::~PostureCaptureRaw() {}
@@ -41,7 +39,7 @@ bool PostureCaptureRaw::start() {
   rgbCameras_updated_.resize(camera_nbr_);
   depthCameras_updated_.resize(camera_nbr_);
 
-  cameraPackager_ = std2::make_unique<CamDataPackagerImpl>(camera_nbr_);
+  cameraPackager_ = make_unique<CamDataPackagerImpl>(camera_nbr_);
 
   calibration_reader_->loadCalibration(calibration_path_);
   if (!(*calibration_reader_) ||
@@ -178,13 +176,13 @@ void PostureCaptureRaw::update_loop() {
       {
         auto data_type = string(COMPOSITE_DEPTHMAP_16BITS_TYPE_COMPRESSED); // defined in ./posture.hpp
         depth_writer_.reset();
-        depth_writer_ = std2::make_unique<ShmdataWriter>(
+        depth_writer_ = make_unique<ShmdataWriter>(
             this,
             make_file_name("depth"),
             compositeDepth.size() * 2,  // why 2?
             "video/x-raw,format=(string)GRAY16_BE,width=(int)640,height=(int)" +
-                to_string(camera_nbr_ * depth_dims[0][1]) +
-                ",framerate=30/1,nCams=(int)" + to_string(camera_nbr_));
+                to_string(camera_nbr_ * depth_dims[0][1]) + ",framerate=30/1,nCams=(int)" +
+                to_string(camera_nbr_));
         // data_type + ", nCams=(int)" + to_string(depth_dims.size()) +
         // ", width=(int)" + to_string(depth_dims[0][0]) +
         // ", height=(int)" + to_string(depth_dims[0][1]));
@@ -204,7 +202,7 @@ void PostureCaptureRaw::update_loop() {
               texture_writer_->writer<MPtr(&shmdata::Writer::alloc_size)>()) {
         auto data_type = string(COMPOSITE_RGB_TYPE_BASE);
         texture_writer_.reset();
-        texture_writer_ = std2::make_unique<ShmdataWriter>(
+        texture_writer_ = make_unique<ShmdataWriter>(
             this,
             make_file_name("texture"),
             compositeTexture.size() * 2,
@@ -292,10 +290,10 @@ bool PostureCaptureRaw::init() {
       reload_calibration_);
 
   //
-  // Depth clipping 
+  // Depth clipping
   pmanage<MPtr(&PContainer::make_int)>("clipping_depth",
                                        [this](const int& val) {
-                                         clipping_depth_ = std::min(65000, val);
+                                         clipping_depth_ = std::min(5000, val);
                                          return true;
                                        },
                                        [this]() { return clipping_depth_; },
@@ -303,7 +301,7 @@ bool PostureCaptureRaw::init() {
                                        "Anything farther than the depth limit will be ignored",
                                        clipping_depth_,
                                        1,
-                                       65000);
+                                       5000);
 
   return true;
 }

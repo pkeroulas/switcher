@@ -1,7 +1,6 @@
 #define DEBUG
 
 #include "./posture_directreconstruct.hpp"
-#include "switcher/std2.hpp"
 
 #include <functional>
 #include <iostream>
@@ -12,7 +11,6 @@
 #include <boost/make_shared.hpp>
 
 #include "switcher/scope-exit.hpp"
-#include "switcher/std2.hpp"
 
 using namespace std;
 using namespace pcl;
@@ -32,8 +30,8 @@ SWITCHER_MAKE_QUIDDITY_DOCUMENTATION(PostureDirectReconstruct,
 
 PostureDirectReconstruct::PostureDirectReconstruct(const std::string&)
     : shmcntr_(static_cast<Quiddity*>(this)) {
-  calibration_reader_ = std2::make_unique<CalibrationReader>("default.kvc");
-  register_ = std2::make_unique<Register>();
+  calibration_reader_ = make_unique<CalibrationReader>("default.kvc");
+  register_ = make_unique<Register>();
 }
 
 PostureDirectReconstruct::~PostureDirectReconstruct() {}
@@ -60,7 +58,8 @@ bool PostureDirectReconstruct::setDimensions(string caps) {
     regWidth  = regex("(.*width=\\(int\\))(.*)", regex_constants::extended);
     regHeight = regex("(.*height=\\(int\\))(.*)",regex_constants::extended);
   } catch (const regex_error& e) {
-    cout << "PostureColorizeGL::" << __FUNCTION__ << " - Regex error code: " << e.code() << endl;
+    cout << "PostureDirectReconstruct::" << __FUNCTION__ << " - Regex error code: " << e.code()
+         << endl;
     return false;
   }
 
@@ -111,7 +110,7 @@ bool PostureDirectReconstruct::setDimensions(string caps) {
 bool PostureDirectReconstruct::connect(std::string shmdata_socket_path) {
   unique_lock<mutex> connectLock(connect_mutex_);
 
-  depthDataReader_ = std2::make_unique<ShmdataFollower>(
+  depthDataReader_ = make_unique<ShmdataFollower>(
       this,
       shmdata_socket_path,
       [&](void* data,
@@ -128,7 +127,7 @@ bool PostureDirectReconstruct::connect(std::string shmdata_socket_path) {
         uint8_t* decompressedData = (uint8_t*)data;
 
         // Split the composite depth image and fill all the depthImages_ buffers
-        cout << "depthDataReader: Splitting the composite depth image" << endl;
+        // cout << "depthDataReader: Splitting the composite depth image" << endl;
         size_t offsetInBytes = 0;
         for (int i = 0; i < camera_nbr_; ++i) {
           int imgSize = depthImages_dims_[i][0] * depthImages_dims_[i][1];
@@ -145,8 +144,7 @@ bool PostureDirectReconstruct::connect(std::string shmdata_socket_path) {
         }
         if (offsetInBytes != size) throw(9999);
       },
-      [=](const string&
-              caps) {  // 2- caps specifies what kind of data is in the buffer
+      [=](const string& caps) {  // 2- caps specifies what kind of data is in the buffer
         cout << "caps ===> " << caps << endl;
         // use caps to fill in number of cameras and depth dimensions
         // v1
@@ -171,7 +169,7 @@ bool PostureDirectReconstruct::start() {
           (uint32_t)camera_nbr_)
     return false;
 
-  // could use std2::make_unique instead
+  // could use make_unique instead
   directMesher_ = unique_ptr<posture::DirectMesher>(new posture::DirectMesher());
   directMesher_->setCalibration(calibration_reader_->getCalibrationParams());
 
@@ -212,7 +210,7 @@ void PostureDirectReconstruct::update_loop() {
     // update_wanted_ = false;
 
     if (!update_loop_started_) break;
-    cout << "DirectReconstruct: 1" << endl;
+    // cout << "DirectReconstruct: 1" << endl;
 
     // The registerer runs in a separate thread and is updated at
     // its own pace
@@ -256,7 +254,7 @@ void PostureDirectReconstruct::update_loop() {
     lock.unlock();
 
     // TODO-PERF: write this using concurrency
-    cout << "DirectReconstruct: 2. creating multiMesh" << endl;
+    // cout << "DirectReconstruct: 2. creating multiMesh" << endl;
 
     // Now create a textured mesh for each depth camera
     vector<TextureMesh::Ptr> multiMesh;
@@ -266,13 +264,13 @@ void PostureDirectReconstruct::update_loop() {
       TextureMesh::Ptr texturedMesh = boost::make_shared<pcl::TextureMesh>();
 
       // get the cloud and release the lock
-      cout << "DirectReconstruct: 2.1 getting the lock" << endl;
+      // cout << "DirectReconstruct: 2.1 getting the lock" << endl;
       unique_lock<mutex> lockDepth(depth_mutex_);
-      cout << "DirectReconstruct: 2.2 getting the cloud" << endl;
+      // cout << "DirectReconstruct: 2.2 getting the cloud" << endl;
       auto cloud = directMesher_->convertToXYZPointCloud(depthImages_[camNo], depthImages_dims_[camNo][0], depthImages_dims_[camNo][1], camNo); // why provide camNo?
       lockDepth.unlock();
 
-      cout << "DirectReconstruct: 2.3 getting the mesh" << endl;
+      // cout << "DirectReconstruct: 2.3 getting the mesh" << endl;
       directMesher_->getMesh(cloud, texturedMesh);
  
       // scale the texture coordinates in the texturedMesh
@@ -284,10 +282,10 @@ void PostureDirectReconstruct::update_loop() {
       // append to our multimesh
       multiMesh.push_back(texturedMesh);
     }
-    cout << "DirectReconstruct: 3. serializing multiMesh" << endl;
+    // cout << "DirectReconstruct: 3. serializing multiMesh" << endl;
 
     // serialize the mesh into a form digestible by Blender: MCTM-texMesh
-    mesh_serialized = meshSerializer_->serialize(multiMesh,0);
+    mesh_serialized = meshSerializer_->serialize(multiMesh[0], 0);  // was:   (multiMesh,0);
 
     // TODO: incorporate stuff from modified test_directmesher.cpp on MacBook........
 
@@ -300,21 +298,18 @@ void PostureDirectReconstruct::update_loop() {
     // uint32_t width, height;
     // auto texture = colorize_->getTexture(width, height);
 
-    cout << "DirectReconstruct: 4. writing multiMesh" << endl;
+    // cout << "DirectReconstruct: 4. writing multiMesh" << endl;
     // time to write the mesh - as long as it's not empty
     TextureMesh::Ptr texturedMesh = multiMesh[0];
     if (texturedMesh->tex_polygons.size() > 0) {
-      cout << "DirectReconstruct: 5. writing multiMesh" << endl;
+      // cout << "DirectReconstruct: 5. writing multiMesh" << endl;
       if (!mesh_writer_ || mesh_serialized.size() > mesh_writer_->writer<MPtr(&shmdata::Writer::alloc_size)>()) 
       {
         cout << "DirectReconstruct: creating ShmdataWriter" << endl;
-        auto data_type = string(POLYGONMESH_TYPE_MULTIMESH);
+        auto data_type = string(POLYGONMESH_TYPE_BASE);  // TYPE_MULTIMESH);
         mesh_writer_.reset();
-        mesh_writer_ =
-            std2::make_unique<ShmdataWriter>(this,
-                                             make_file_name("mesh"),
-                                             mesh_serialized.size() * 2,
-                                             data_type);
+        mesh_writer_ = make_unique<ShmdataWriter>(
+            this, make_file_name("mesh"), mesh_serialized.size() * 2, data_type);
 
         if (!mesh_writer_) {
           g_warning("Unable to create mesh writer");
@@ -326,15 +321,14 @@ void PostureDirectReconstruct::update_loop() {
           reinterpret_cast<char*>(mesh_serialized.data()),
           mesh_serialized.size());
       mesh_writer_->bytes_written(mesh_serialized.size());
-      cout << "DirectReconstruct: written bytes: " << mesh_serialized.size()
-           << endl;
+      // cout << "DirectReconstruct: written bytes: " << mesh_serialized.size()
 
       // if (!texture_writer_ ||
       //     texture.size() >
       //         texture_writer_->writer<MPtr(&shmdata::Writer::alloc_size)>()) {
       //   auto data_type = string(POINTCLOUD_TYPE_BASE);
       //   texture_writer_.reset();
-      //   texture_writer_ = std2::make_unique<ShmdataWriter>(
+      //   texture_writer_ = make_unique<ShmdataWriter>(
       //       this,
       //       make_file_name("texture"),
       //       texture.size() * 2,
