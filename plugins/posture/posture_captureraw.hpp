@@ -45,8 +45,6 @@ class PostureCaptureRaw : public Quiddity, public StartableQuiddity {
                                  "QQVGA 60Hz"},
                                 0};
 
-  unsigned short clipping_depth_{3000};
-
   std::mutex camera_mutex_;
   std::vector<std::unique_ptr<posture::ZCamera>> cameras_{};
   std::unique_ptr<posture::Register> register_{nullptr};
@@ -61,8 +59,16 @@ class PostureCaptureRaw : public Quiddity, public StartableQuiddity {
   // TODO: eventually change into CamDataPackager
   std::unique_ptr<posture::CamDataPackagerImpl> cameraPackager_{nullptr};
 
-  // std::vector<std::vector<uint8_t>> images_{};
-  // std::vector<std::vector<uint32_t>> images_dims_{};
+  // filtering params
+  int bilateral_filter_kernel_size_{5};
+  double bilateral_filter_sigma_pos_{5.f};
+  double bilateral_filter_sigma_value_{1000.f};
+  int bilateral_filter_iterations_{1};
+  int hole_filling_kernel_size_{1};
+  int hole_filling_iterations_{1};
+
+  // clipping params
+  unsigned short clipping_depth_{3000};
 
   std::atomic_bool update_loop_started_{false};
   std::atomic_bool update_wanted_{false};
