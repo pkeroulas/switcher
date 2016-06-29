@@ -68,7 +68,7 @@ class PostureCaptureRaw : public Quiddity, public StartableQuiddity {
   int hole_filling_iterations_{1};
 
   // clipping params
-  unsigned short clipping_depth_{3000};
+  unsigned short clipping_depth_{2222};
 
   std::atomic_bool update_loop_started_{false};
   std::atomic_bool update_wanted_{false};

@@ -170,7 +170,8 @@ bool PostureDirectReconstruct::start() {
     return false;
 
   // could use make_unique instead
-  directMesher_ = unique_ptr<posture::DirectMesher>(new posture::DirectMesher());
+  directMesher_ =
+      unique_ptr<posture::DirectMesher>(new posture::DirectMesher(pixelResolution, angleTolerance));
   directMesher_->setCalibration(calibration_reader_->getCalibrationParams());
 
   meshSerializer_= unique_ptr<posture::MeshSerializer>(new posture::MeshSerializer());
@@ -275,9 +276,7 @@ void PostureDirectReconstruct::update_loop() {
  
       // scale the texture coordinates in the texturedMesh
       // for each point in the mesh
-      camNo = camNo;
-      for (auto& uv: texturedMesh->tex_coordinates[0])
-	  uv[0] = ( uv[0] + camNo ) / 3;
+      for (auto& uv : texturedMesh->tex_coordinates[0]) uv[0] = (uv[0] + camNo) / camera_nbr_;
 
       // append to our multimesh
       multiMesh.push_back(texturedMesh);
@@ -285,7 +284,10 @@ void PostureDirectReconstruct::update_loop() {
     // cout << "DirectReconstruct: 3. serializing multiMesh" << endl;
 
     // serialize the mesh into a form digestible by Blender: MCTM-texMesh
-    mesh_serialized = meshSerializer_->serialize(multiMesh[0], 0);  // was:   (multiMesh,0);
+    // for single-polymesh output:
+    //  mesh_serialized = meshSerializer_->serialize(multiMesh[0], 0);
+    // for multiMesh output:
+    mesh_serialized = meshSerializer_->serialize(multiMesh, 0);
 
     // TODO: incorporate stuff from modified test_directmesher.cpp on MacBook........
 
@@ -300,13 +302,15 @@ void PostureDirectReconstruct::update_loop() {
 
     // cout << "DirectReconstruct: 4. writing multiMesh" << endl;
     // time to write the mesh - as long as it's not empty
-    TextureMesh::Ptr texturedMesh = multiMesh[0];
-    if (texturedMesh->tex_polygons.size() > 0) {
+    if (multiMesh[0]->tex_polygons.size() > 0) {
       // cout << "DirectReconstruct: 5. writing multiMesh" << endl;
       if (!mesh_writer_ || mesh_serialized.size() > mesh_writer_->writer<MPtr(&shmdata::Writer::alloc_size)>()) 
       {
         cout << "DirectReconstruct: creating ShmdataWriter" << endl;
-        auto data_type = string(POLYGONMESH_TYPE_BASE);  // TYPE_MULTIMESH);
+        /// for polymesh output:
+        // auto data_type = string(POLYGONMESH_TYPE_BASE);  // TYPE_MULTIMESH);
+        /// for multimesh output:
+        auto data_type = string(POLYGONMESH_TYPE_MULTIMESH);  // TYPE_MULTIMESH);
         mesh_writer_.reset();
         mesh_writer_ = make_unique<ShmdataWriter>(
             this, make_file_name("mesh"), mesh_serialized.size() * 2, data_type);
@@ -428,19 +432,18 @@ bool PostureDirectReconstruct::init() {
   pmanage<MPtr(&PContainer::make_group)>(
       "directMesh", "Direct Mesher parameters", "Reconstruction grid parameters");
 
-  pmanage<MPtr(&PContainer::make_parented_int)>(
-      "pixel_resolution",
-      "directMesh",
-      [this](const int& val) {
-        pixelResolution = val;
-        return true;
-      },
-      [this]() { return pixelResolution; },
-      "Pixel resolution",
-      "Spacing between samples taken from the depth map",
-      pixelResolution,
-      1,
-      10);
+  pmanage<MPtr(&PContainer::make_parented_int)>("pixel_resolution",
+                                                "directMesh",
+                                                [this](const int& val) {
+                                                  pixelResolution = val;
+                                                  return true;
+                                                },
+                                                [this]() { return pixelResolution; },
+                                                "Pixel resolution",
+                                                "Spacing between samples taken from the depth map",
+                                                pixelResolution,
+                                                1,
+                                                40);
 
   pmanage<MPtr(&PContainer::make_parented_double)>(
       "angle_tolerance",
