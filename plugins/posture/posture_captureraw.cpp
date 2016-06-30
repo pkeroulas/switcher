@@ -179,13 +179,10 @@ void PostureCaptureRaw::update_loop() {
         depth_writer_ = make_unique<ShmdataWriter>(
             this,
             make_file_name("depth"),
-            compositeDepth.size() * 2,  // why 2?
-            "video/x-raw,format=(string)GRAY16_BE,width=(int)640,height=(int)" +
-                to_string(camera_nbr_ * depth_dims[0][1]) + ",framerate=30/1,nCams=(int)" +
-                to_string(camera_nbr_));
-        // data_type + ", nCams=(int)" + to_string(depth_dims.size()) +
-        // ", width=(int)" + to_string(depth_dims[0][0]) +
-        // ", height=(int)" + to_string(depth_dims[0][1]));
+            compositeDepth.size() * 2, string(compress_depth_? "compressed " : "") +
+            "video/x-raw,format=(string)GRAY16_BE,width=(int)" + to_string(depth_dims[0][0]) +
+            ",height=(int)" + to_string(camera_nbr_ * depth_dims[0][1]) + 
+            ",framerate=30/1,nCams=(int)" + to_string(camera_nbr_));
 
         if (!depth_writer_) {
           g_warning("Unable to create depth writer");
@@ -200,7 +197,7 @@ void PostureCaptureRaw::update_loop() {
       if (!texture_writer_ ||
           compositeTexture.size() >
               texture_writer_->writer<MPtr(&shmdata::Writer::alloc_size)>()) {
-        auto data_type = string(COMPOSITE_RGB_TYPE_BASE);
+        auto data_type = string(COMPOSITE_RGB_TYPE_BASE); // unused for now...
         texture_writer_.reset();
         texture_writer_ = make_unique<ShmdataWriter>(
             this,
@@ -247,19 +244,19 @@ bool PostureCaptureRaw::init() {
                                        camera_nbr_,
                                        1,
                                        7);
-/*
+
   pmanage<MPtr(&PContainer::make_bool)>(
-      "compress_mesh",
+      "compress_depth_",
       [this](const bool& val) {
-        compress_mesh_ = val;
-        if (solidifyGPU_) colorize_->setCompressMesh(compress_mesh_);
+        compress_depth_ = val;
+        if (cameraPackager_) cameraPackager_->setCompressDepth(compress_depth_);
         return true;
       },
-      [this]() { return compress_mesh_; },
-      "Compress mesh",
-      "Compress the generated mesh",
-      compress_mesh_);
-*/
+      [this]() { return compress_depth_; },
+      "Compress depth",
+      "Compress the composite depth image",
+      compress_depth_);
+
   //  
   // Calibration
   pmanage<MPtr(&PContainer::make_group)>(

@@ -5,6 +5,7 @@
 #include <functional>
 #include <iostream>
 #include <regex>
+#include <snappy.h>
 
 #include <pcl/io/obj_io.h>
 #include <pcl/TextureMesh.h>
@@ -42,16 +43,17 @@ PostureDirectReconstruct::~PostureDirectReconstruct() {}
 // 3) shift each texturedmesh's coordinates depending on the camera it came from -- new_u = (old_u + camNo)/3
 // 4) write out the texturedmesh into a shmData for consumption by Blender
 
-bool PostureDirectReconstruct::setDimensions(string caps) {
+bool PostureDirectReconstruct::setDimensionsAndDecompression(string caps) {
   unsigned int width, stackedHeight, height;
 
+  regex regCompress, regVideo, regFormat;
   regex regNcams, regWidth, regHeight;
-  regex regVideo, regFormat;
   smatch match;
 
   try {
     // regVideo  = regex("(.*application/x-composite-zcam16c)(.*)",
     // regex_constants::extended);
+    regCompress = regex("(.*compress)(.*)", regex_constants::extended);
     regVideo = regex("(.*video/x-raw)(.*)", regex_constants::extended);
     regFormat = regex("(.*format=\\(string\\))(.*)", regex_constants::extended);
     regNcams  = regex("(.*nCams=\\(int\\))(.*)", regex_constants::extended);
@@ -62,6 +64,8 @@ bool PostureDirectReconstruct::setDimensions(string caps) {
          << endl;
     return false;
   }
+
+  decompress_ = regex_match(caps, regCompress);
 
   // check prefix
   if (!regex_match(caps, regVideo))
@@ -116,15 +120,26 @@ bool PostureDirectReconstruct::connect(std::string shmdata_socket_path) {
       [&](void* data,
           size_t size) {  // 1- feed shmdata buffer into depthImages_
 
-        if (depthImages_.size() ==
-            0)  // not ready to process yet (dimensions not set)
+        if (depthImages_.size() == 0)  // not ready to process yet (dimensions not set)
           return;
 
-        // we'll need to uncompress the compositeDepthData then convert it to 16
-        // bit
-        // auto decompressedData = snappy::decompress(data) // TODO: write
-        // appropriate code here (gitg search snappy)
-        uint8_t* decompressedData = (uint8_t*)data;
+        vector<char> uncompressedData;
+
+        // if necessary, uncompress the compositeDepthData 
+        if (decompress_)
+        {
+          if (snappy::IsValidCompressedBuffer((char*)data, size))
+          {
+            string uncompressedBuffer;
+            snappy::Uncompress((char*)data, size, &uncompressedBuffer);
+            // put result into a vector of char (maybe we can directly point to the string data?
+            uncompressedData.resize(uncompressedBuffer.size());
+            memcpy((void*)uncompressedData.data(), (void*)uncompressedBuffer.data(), uncompressedBuffer.size());
+            data = (void*)uncompressedData.data();
+          }
+          else
+            cout << "PostureDirectReconstruct::" << __FUNCTION__ << "invalid Snappy buffer" << endl;
+        }
 
         // Split the composite depth image and fill all the depthImages_ buffers
         // cout << "depthDataReader: Splitting the composite depth image" << endl;
@@ -135,9 +150,7 @@ bool PostureDirectReconstruct::connect(std::string shmdata_socket_path) {
 
           unique_lock<mutex> lockDepth(depth_mutex_);
           depthImages_[i].resize(imgSize);
-          memcpy(depthImages_[i].data(),
-                 decompressedData + offsetInBytes,
-                 sizeInBytes);
+          memcpy(depthImages_[i].data(), (char*)data + offsetInBytes, sizeInBytes);
           // lockDepth.unlock();
 
           offsetInBytes += sizeInBytes;
@@ -151,7 +164,7 @@ bool PostureDirectReconstruct::connect(std::string shmdata_socket_path) {
         // "application/x-composite-zcam16c,nCams=(int)3,width=(int)640,height=(int)480"
         // v2
         // "video/x-raw,format=(string)GRAY16_BE,width=(int)640,height=(int)960,framerate=30/1,nCams=(int)2"
-        setDimensions(caps);
+        setDimensionsAndDecompression(caps);
       });
 
   return true;
@@ -171,7 +184,7 @@ bool PostureDirectReconstruct::start() {
 
   // could use make_unique instead
   directMesher_ =
-      unique_ptr<posture::DirectMesher>(new posture::DirectMesher(pixelResolution, angleTolerance));
+      unique_ptr<posture::DirectMesher>(new posture::DirectMesher(pixelResolution_, angleTolerance_));
   directMesher_->setCalibration(calibration_reader_->getCalibrationParams());
 
   meshSerializer_= unique_ptr<posture::MeshSerializer>(new posture::MeshSerializer());
@@ -268,7 +281,9 @@ void PostureDirectReconstruct::update_loop() {
       // cout << "DirectReconstruct: 2.1 getting the lock" << endl;
       unique_lock<mutex> lockDepth(depth_mutex_);
       // cout << "DirectReconstruct: 2.2 getting the cloud" << endl;
-      auto cloud = directMesher_->convertToXYZPointCloud(depthImages_[camNo], depthImages_dims_[camNo][0], depthImages_dims_[camNo][1], camNo); // why provide camNo?
+      int sizeX = depthImages_dims_[camNo][0];
+      int sizeY = depthImages_dims_[camNo][1];
+      auto cloud = directMesher_->convertToXYZPointCloud(depthImages_[camNo], sizeX, sizeY, camNo); // why provide camNo?
       lockDepth.unlock();
 
       // cout << "DirectReconstruct: 2.3 getting the mesh" << endl;
@@ -428,20 +443,20 @@ bool PostureDirectReconstruct::init() {
 
   //
   // DirectMesher parameters
-  // 1. pixelResolution  2. angleTolerance  3. clippingDepth (tho depth was clipped upon scan)
+  // 1. pixelResolution_  2. angleTolerance_  3. clippingDepth (tho depth was clipped upon scan)
   pmanage<MPtr(&PContainer::make_group)>(
       "directMesh", "Direct Mesher parameters", "Reconstruction grid parameters");
 
   pmanage<MPtr(&PContainer::make_parented_int)>("pixel_resolution",
                                                 "directMesh",
                                                 [this](const int& val) {
-                                                  pixelResolution = val;
+                                                  pixelResolution_ = val;
                                                   return true;
                                                 },
-                                                [this]() { return pixelResolution; },
+                                                [this]() { return pixelResolution_; },
                                                 "Pixel resolution",
                                                 "Spacing between samples taken from the depth map",
-                                                pixelResolution,
+                                                pixelResolution_,
                                                 1,
                                                 40);
 
@@ -449,13 +464,13 @@ bool PostureDirectReconstruct::init() {
       "angle_tolerance",
       "directMesh",
       [this](const double& val) {
-        angleTolerance = val;
+        angleTolerance_ = val;
         return true;
       },
-      [this]() { return angleTolerance; },
+      [this]() { return angleTolerance_; },
       "Angular tolerance",
       "Angular tolerance for the direct mesh reconstruction",
-      angleTolerance,
+      angleTolerance_,
       1.0,
       20.0);
 

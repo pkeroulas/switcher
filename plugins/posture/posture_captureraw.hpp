@@ -56,16 +56,16 @@ class PostureCaptureRaw : public Quiddity, public StartableQuiddity {
   std::vector<bool> rgbCameras_updated_{};
   std::vector<bool> depthCameras_updated_{};
 
-  // TODO: eventually change into CamDataPackager
+  // TODO: eventually change into CamDataPackager (pImpl)
   std::unique_ptr<posture::CamDataPackagerImpl> cameraPackager_{nullptr};
 
   // filtering params
-  int bilateral_filter_kernel_size_{5};
-  double bilateral_filter_sigma_pos_{5.f};
-  double bilateral_filter_sigma_value_{1000.f};
+  int bilateral_filter_kernel_size_{30};
+  double bilateral_filter_sigma_pos_{15.f};
+  double bilateral_filter_sigma_value_{100.f};
   int bilateral_filter_iterations_{1};
-  int hole_filling_kernel_size_{1};
-  int hole_filling_iterations_{1};
+  int hole_filling_kernel_size_{2};
+  int hole_filling_iterations_{2};
 
   // clipping params
   unsigned short clipping_depth_{2222};

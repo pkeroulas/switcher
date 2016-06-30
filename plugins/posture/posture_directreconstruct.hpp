@@ -45,7 +45,7 @@ class PostureDirectReconstruct : public Quiddity, public StartableQuiddity {
  private:
   ShmdataConnector shmcntr_;
   std::string calibration_path_{"default.kvc"};
-  bool setDimensions(std::string caps);
+  bool setDimensionsAndDecompression(std::string caps);
 
   int camera_nbr_{1};
   Selection capture_modes_enum_{{"Default mode",
@@ -75,8 +75,10 @@ class PostureDirectReconstruct : public Quiddity, public StartableQuiddity {
   std::vector<std::vector<uint16_t>> depthImages_{};
   std::vector<std::vector<uint32_t>> depthImages_dims_{};
 
-  int pixelResolution;
-  double angleTolerance;
+  bool decompress_;
+
+  int pixelResolution_;
+  double angleTolerance_;
 
   std::atomic_bool update_loop_started_{false};
   std::atomic_bool update_wanted_{false};
