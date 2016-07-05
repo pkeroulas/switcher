@@ -179,10 +179,12 @@ void PostureCaptureRaw::update_loop() {
         depth_writer_ = make_unique<ShmdataWriter>(
             this,
             make_file_name("depth"),
-            compositeDepth.size() * 2, string(compress_depth_? "compressed " : "") +
-            "video/x-raw,format=(string)GRAY16_BE,width=(int)" + to_string(depth_dims[0][0]) +
-            ",height=(int)" + to_string(camera_nbr_ * depth_dims[0][1]) + 
-            ",framerate=30/1,nCams=(int)" + to_string(camera_nbr_));
+            compositeDepth.size() * 2,
+            string(compress_depth_ ? "compressed " : "") + "video/x-raw" +
+                ", format=(string)GRAY16_BE" + ", width=(int)" + to_string(depth_dims[0][0]) +
+                ", height=(int)" + to_string(camera_nbr_ * depth_dims[0][1]) +
+                ", framerate=30/1,nCams=(int)" + to_string(camera_nbr_) +
+                ", pixel-aspect-ratio=1/1");
 
         if (!depth_writer_) {
           g_warning("Unable to create depth writer");
@@ -203,8 +205,9 @@ void PostureCaptureRaw::update_loop() {
             this,
             make_file_name("texture"),
             compositeTexture.size() * 2,
-            "video/x-raw,format=(string)RGB,width=(int)" + to_string(texture_width) +
-                ",height=(int)" + to_string(texture_height) + ",framerate=30/1");
+            "video/x-raw, format=(string)RGB, width=(int)" + to_string(texture_width) +
+                ", height=(int)" + to_string(texture_height) + ", framerate=30/1" +
+                ", pixel-aspect-ratio=1/1");
 
         if (!texture_writer_) {
           g_warning("Unable to create texture writer");

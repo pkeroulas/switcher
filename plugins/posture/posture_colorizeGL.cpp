@@ -211,14 +211,14 @@ bool PostureColorizeGL::connect(std::string shmdata_socket_path) {
             dims_[index] = vector<unsigned int>({width, height, channels});
           }
         }
-
+        cout << "end of the loop" << endl;
       },
       [=](string caps) {
         unique_lock<mutex> lock(mutex_);
         shmdata_reader_caps_[shmid] = caps;
       });
 
-  shmdata_readers_[shmdata_socket_path] = std::move(reader);
+  // shmdata_readers_[shmdata_socket_path] = std::move(reader);
   return true;
 }
 
