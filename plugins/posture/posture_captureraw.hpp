@@ -88,6 +88,7 @@ class PostureCaptureRaw : public Quiddity, public StartableQuiddity {
                       std::vector<unsigned char>& depth,
                       int width,
                       int height);
+  bool processing_frame_depth_{false};
   void cb_frame_RGB(int index,
                     std::vector<unsigned char>& rgb,
                     int width,

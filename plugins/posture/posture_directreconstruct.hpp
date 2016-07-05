@@ -77,8 +77,8 @@ class PostureDirectReconstruct : public Quiddity, public StartableQuiddity {
 
   bool decompress_;
 
-  int pixelResolution_;
-  double angleTolerance_;
+  int pixelResolution_{11};
+  double angleTolerance_{12.0};
 
   std::atomic_bool update_loop_started_{false};
   std::atomic_bool update_wanted_{false};

@@ -203,7 +203,7 @@ void PostureCaptureRaw::update_loop() {
             this,
             make_file_name("texture"),
             compositeTexture.size() * 2,
-            "video/x-raw,format=(string)BGR,width=(int)" + to_string(texture_width) +
+            "video/x-raw,format=(string)RGB,width=(int)" + to_string(texture_width) +
                 ",height=(int)" + to_string(texture_height) + ",framerate=30/1");
 
         if (!texture_writer_) {
@@ -430,6 +430,11 @@ void PostureCaptureRaw::cb_frame_depth(int index,
                                       std::vector<unsigned char>& depth,
                                       int width,
                                       int height) {
+  if (processing_frame_depth_) // don't bug me, i'm busy
+    return;
+
+  processing_frame_depth_ = true;
+
   unique_lock<mutex> lockCamera(update_mutex_, std::try_to_lock);
   if (lockCamera.owns_lock()) {
 
@@ -444,6 +449,7 @@ void PostureCaptureRaw::cb_frame_depth(int index,
             k=0;
 
     cameraPackager_->StoreDepth(index, depth16, width, height);
+    cerr << "Capture:: Storing depth from camera #" << index << endl;
 
     bool already_updated = depthCameras_updated_[index];
     depthCameras_updated_[index] = true;
@@ -454,6 +460,8 @@ void PostureCaptureRaw::cb_frame_depth(int index,
       update_cv_.notify_one();
     }
   }
+
+  processing_frame_depth_ = false;
 }
 
 void PostureCaptureRaw::cb_frame_RGB(int index,
@@ -462,6 +470,7 @@ void PostureCaptureRaw::cb_frame_RGB(int index,
                                     int height) {
   unique_lock<mutex> lock(camera_mutex_);
   cameraPackager_->StoreRGB(index, rgb, width, height);
+  cerr << "Capture:: Storing RGB from camera #" << index << endl;
   rgbCameras_updated_[index] = true;
 }
 
