@@ -42,7 +42,7 @@ PostureDirectReconstruct::~PostureDirectReconstruct() {}
 // 3) shift each texturedmesh's coordinates depending on the camera it came from -- new_u = (old_u + camNo)/3
 // 4) write out the texturedmesh into a shmData for consumption by Blender
 
-bool PostureDirectReconstruct::setDimensionsAndDecompression(string caps) {
+bool PostureDirectReconstruct::set_dimensions_and_decompression(string caps) {
   unsigned int width, stackedHeight, height;
 
   regex regCompress, regVideo, regFormat;
@@ -52,7 +52,7 @@ bool PostureDirectReconstruct::setDimensionsAndDecompression(string caps) {
   try {
     // regVideo  = regex("(.*application/x-composite-zcam16c)(.*)",
     // regex_constants::extended);
-    regCompress = regex("(.*compress)(.*)", regex_constants::extended);
+    regCompress = regex("(.*posture/compressed-depth)(.*)", regex_constants::extended);
     regVideo = regex("(.*video/x-raw)(.*)", regex_constants::extended);
     regFormat = regex("(.*format=\\(string\\))(.*)", regex_constants::extended);
     regNcams  = regex("(.*nCams=\\(int\\))(.*)", regex_constants::extended);
@@ -67,9 +67,8 @@ bool PostureDirectReconstruct::setDimensionsAndDecompression(string caps) {
   decompress_ = regex_match(caps, regCompress);
 
   // check prefix
-  if (!regex_match(caps, regVideo))
-    return false;
-  
+  if (!decompress_ && !regex_match(caps, regVideo)) return false;
+
   // check format
   if (regex_match(caps, match, regFormat)) {
     string subMatch = match[2].str();
@@ -104,9 +103,6 @@ bool PostureDirectReconstruct::setDimensionsAndDecompression(string caps) {
   for (int i = 0; i < camera_nbr_; ++i)
     depthImages_dims_.emplace_back(vector<uint32_t>({width,height}));
 
-  cout << "DirectReconstruct: tracking " << camera_nbr_ << " cams, width "
-       << width << " height " << height << endl;
-
   return true;
 }
 
@@ -117,49 +113,42 @@ bool PostureDirectReconstruct::connect(std::string shmdata_socket_path) {
   depthDataReader_ = make_unique<ShmdataFollower>(
       this,
       shmdata_socket_path,
-      [&](void* data,
-          size_t size) {  // 1- feed shmdata buffer into depthImages_
+      [&](void* data, size_t size) {
 
         if (depthImages_.size() == 0)  // not ready to process yet (dimensions not set)
           return;
 
         vector<char> uncompressedData;
-        char* rawImageData = (char*)data;
+        auto rawImageData = reinterpret_cast<char*>(data);
 
         // if necessary, uncompress the compositeDepthData 
         if (decompress_)
         {
-          // cout << "PDR:: decompressing..." << endl;
           if (snappy::IsValidCompressedBuffer((char*)data, size))
           {
             string uncompressedBuffer;
             snappy::Uncompress((char*)data, size, &uncompressedBuffer);
-            cout << "PDR:: size of compressed buffer (in bytes): " << size << endl;
-            // cout << "PDR:: size of uncompressed buffer (in bytes): " << uncompressedBuffer.size() << endl;
             // put result into a vector of char (maybe we can directly point to the string data?
             uncompressedData.resize(uncompressedBuffer.size());
             // unique_lock<mutex> lockRawImageData(rawImageData_mutex_);
             memcpy((void*)uncompressedData.data(), (void*)uncompressedBuffer.data(), uncompressedBuffer.size());
             rawImageData = (char*)uncompressedData.data();
+          } else {
+            cout << "PostureDirectReconstruct::" << __FUNCTION__ << " Invalid Snappy buffer"
+                 << endl;
+            return;
           }
-          else
-            cout << "PostureDirectReconstruct::" << __FUNCTION__ << "invalid Snappy buffer" << endl;
         }
 
         // Split the composite depth image and fill all the depthImages_ buffers
-        // cout << "depthDataReader: Splitting the composite depth image" << endl;
-        
         size_t offsetInBytes = 0;
         for (int i = 0; i < camera_nbr_; ++i) {
           int imgSize = depthImages_dims_[i][0] * depthImages_dims_[i][1];
-          // cout << "PDR:: single image size (in pixels): " << imgSize << endl;
           int sizeInBytes = imgSize * sizeof(uint16_t);
-          // cout << "PDR:: single image size (in bytes): " << sizeInBytes << endl;
 
           unique_lock<mutex> lockDepth(depth_mutex_);
           depthImages_[i].resize(imgSize);
           memcpy(depthImages_[i].data(), rawImageData + offsetInBytes, sizeInBytes);
-          cout << "PDR:: extracting image # " << i << endl;
           // lockDepth.unlock();
 
           offsetInBytes += sizeInBytes;
@@ -170,13 +159,9 @@ bool PostureDirectReconstruct::connect(std::string shmdata_socket_path) {
         update_cv_.notify_one();
       },
       [=](const string& caps) {  // 2- caps specifies what kind of data is in the buffer
-        cout << "caps ===> " << caps << endl;
         // use caps to fill in number of cameras and depth dimensions
-        // v1
-        // "application/x-composite-zcam16c,nCams=(int)3,width=(int)640,height=(int)480"
-        // v2
         // "video/x-raw,format=(string)GRAY16_BE,width=(int)640,height=(int)960,framerate=30/1,nCams=(int)2"
-        setDimensionsAndDecompression(caps);
+        set_dimensions_and_decompression(caps);
       });
 
   // ensure that the reader object persists
@@ -231,8 +216,6 @@ void PostureDirectReconstruct::update_loop() {
   // this is the end goal: construct a serialized mesh
   std::vector<uint8_t> mesh_serialized{};
 
-  cout << "DirectReconstruct: starting update_loop" << endl;
-
   while (update_loop_started_) {
     unique_lock<mutex> lock(update_mutex_);  // still unsure what this does :)
 
@@ -240,7 +223,6 @@ void PostureDirectReconstruct::update_loop() {
     update_wanted_ = false;
 
     if (!update_loop_started_) break;
-    // cout << "DirectReconstruct: 1" << endl;
 
     if (reload_calibration_) {
       calibration_reader_->reload();
@@ -274,12 +256,10 @@ void PostureDirectReconstruct::update_loop() {
       auto cloud = directMesher_->convertToXYZPointCloud(depthImages_[camNo], sizeX, sizeY, camNo); // why provide camNo?
       lockDepth.unlock();
 
-      cout << "DirectReconstruct:: Getting the mesh from camera #" << camNo <<  endl;
       directMesher_->getMesh(cloud, texturedMesh, camNo);
 
       // scale the texture coordinates in the texturedMesh
       // for each point in the mesh
-      cout << "scaling texture coords. e.g. (.3, .3) will become (" << (.3+camNo)/camera_nbr_ <<  ", .3)" << endl;
       for (auto& uv : texturedMesh->tex_coordinates[0]) uv[0] = (uv[0] + camNo) / camera_nbr_;
 
       // append to our multimesh
@@ -299,7 +279,6 @@ void PostureDirectReconstruct::update_loop() {
       // cout << "DirectReconstruct: 5. writing multiMesh" << endl;
       if (!mesh_writer_ || mesh_serialized.size() > mesh_writer_->writer<MPtr(&shmdata::Writer::alloc_size)>()) 
       {
-        cout << "DirectReconstruct: creating ShmdataWriter" << endl;
         /// for polymesh output:
         // auto data_type = string(POLYGONMESH_TYPE_BASE);  // TYPE_MULTIMESH);
         /// for multimesh output:

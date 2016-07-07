@@ -40,6 +40,7 @@ bool PostureCaptureRaw::start() {
   depthCameras_updated_.resize(camera_nbr_);
 
   cameraPackager_ = make_unique<CamDataPackagerImpl>(camera_nbr_);
+  cameraPackager_->setCompressDepth(compress_depth_);
 
   calibration_reader_->loadCalibration(calibration_path_);
   if (!(*calibration_reader_) ||
@@ -110,35 +111,6 @@ void PostureCaptureRaw::update_loop() {
 
     if (!update_loop_started_) break;
 
-    // // The registerer runs in a separate thread and is updated at
-    // // its own pace
-    // if (improve_registering_ && !is_registering_) {
-    //   if (registering_thread_.joinable()) registering_thread_.join();
-
-    //   is_registering_ = true;
-    //   registering_thread_ = thread([=]() {
-    //     calibration_reader_->reload();
-    //     if (*calibration_reader_ &&
-    //         calibration_reader_->getCalibrationParams().size() >=
-    //             (uint32_t)camera_nbr_) {
-    //       auto calibration = calibration_reader_->getCalibrationParams();
-
-    //       register_->setGuessCalibration(calibration);
-    //       calibration = register_->getCalibration();
-
-    //       // The previous call can take some time, so we check again that
-    //       // automatic registration is active
-    //       if (improve_registering_) {
-    //         solidifyGPU_->setCalibration(calibration);
-    //         colorize_->setCalibration(calibration);
-    //       }
-    //     }
-
-    //     is_registering_ = false;
-    //     pmanage<MPtr(&PContainer::set<bool>)>(register_id_, false);
-    //   });
-    // }
-
     if (reload_calibration_) {
       calibration_reader_->reload();
       if (*calibration_reader_ &&
@@ -147,20 +119,7 @@ void PostureCaptureRaw::update_loop() {
         auto calibration = calibration_reader_->getCalibrationParams();
       }
     }
-
-    /////////////////////////////////////////////
-    // get the composite texture and depth data from the capturer
-    
-    // solidifyGPU_->getMesh(mesh);
-
     lock.unlock();
-
-    unique_lock<mutex> lockCamera(camera_mutex_);
-    //colorize_->setInput(mesh, images_, images_dims_);
-    lockCamera.unlock();
-
-    // colorize_->getTexturedMesh(texturedMesh);
-    // colorize_->getTexturedMesh(mesh_serialized);
 
     uint32_t texture_width, texture_height;
     std::vector<unsigned char> compositeTexture = cameraPackager_->getCompositeTexture(texture_width, texture_height);
@@ -180,10 +139,10 @@ void PostureCaptureRaw::update_loop() {
             this,
             make_file_name("depth"),
             compositeDepth.size() * 2,
-            string(compress_depth_ ? "compressed " : "") + "video/x-raw" +
+            string(compress_depth_ ? "posture/compressed-depth" : "video/x-raw") +
                 ", format=(string)GRAY16_BE" + ", width=(int)" + to_string(depth_dims[0][0]) +
                 ", height=(int)" + to_string(camera_nbr_ * depth_dims[0][1]) +
-                ", framerate=30/1,nCams=(int)" + to_string(camera_nbr_) +
+                ", framerate=30/1, nCams=(int)" + to_string(camera_nbr_) +
                 ", pixel-aspect-ratio=1/1");
 
         if (!depth_writer_) {
@@ -194,7 +153,7 @@ void PostureCaptureRaw::update_loop() {
 
       depth_writer_->writer<MPtr(&shmdata::Writer::copy_to_shm)>(
           reinterpret_cast<char*>(compositeDepth.data()), compositeDepth.size());
-      depth_writer_->bytes_written(compositeDepth.size() * sizeof(unsigned char));
+      depth_writer_->bytes_written(compositeDepth.size());
 
       if (!texture_writer_ ||
           compositeTexture.size() >
@@ -452,7 +411,6 @@ void PostureCaptureRaw::cb_frame_depth(int index,
             k=0;
 
     cameraPackager_->StoreDepth(index, depth16, width, height);
-    cerr << "Capture:: Storing depth from camera #" << index << endl;
 
     bool already_updated = depthCameras_updated_[index];
     depthCameras_updated_[index] = true;
@@ -473,7 +431,6 @@ void PostureCaptureRaw::cb_frame_RGB(int index,
                                     int height) {
   unique_lock<mutex> lock(camera_mutex_);
   cameraPackager_->StoreRGB(index, rgb, width, height);
-  cerr << "Capture:: Storing RGB from camera #" << index << endl;
   rgbCameras_updated_[index] = true;
 }
 

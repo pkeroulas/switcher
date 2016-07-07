@@ -45,7 +45,7 @@ class PostureDirectReconstruct : public Quiddity, public StartableQuiddity {
  private:
   ShmdataConnector shmcntr_;
   std::string calibration_path_{"default.kvc"};
-  bool setDimensionsAndDecompression(std::string caps);
+  bool set_dimensions_and_decompression(std::string caps);
 
   int camera_nbr_{1};
   Selection capture_modes_enum_{{"Default mode",
