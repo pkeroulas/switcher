@@ -549,6 +549,7 @@ void PostureScan3DGPU::zero(vector<bool>& status) {
 void PostureScan3DGPU::cb_frame_cloud(int index,
                                       pcl::PointCloud<pcl::PointXYZRGBNormal>::Ptr cloud) {
   unique_lock<mutex> lockCamera(camera_mutex_);
+  sculpt_->setInputCloud(cloud);
   register_->setInputCloud(index, cloud);
 }
 
