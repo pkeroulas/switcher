@@ -88,6 +88,7 @@ bool PostureColorize::init() {
   pmanage<MPtr(&PContainer::make_bool)>("compute_tex_coords",
                                         [this](const bool& val) {
                                           compute_tex_coords_ = val;
+                                          colorize_->setComputeTexCoords(compute_tex_coords_);
                                           return true;
                                         },
                                         [this]() { return compute_tex_coords_; },
@@ -98,6 +99,7 @@ bool PostureColorize::init() {
   pmanage<MPtr(&PContainer::make_bool)>("compress_mesh",
                                         [this](const bool& val) {
                                           compress_mesh_ = val;
+                                          colorize_->setCompressMesh(compress_mesh_);
                                           return true;
                                         },
                                         [this]() { return compress_mesh_; },
@@ -180,7 +182,8 @@ bool PostureColorize::connect(std::string shmdata_socket_path) {
             // Write the texture
             if (!tex_writer_ || width != prev_width_ || height != prev_height_) {
               auto data_type = "video/x-raw,format=(string)BGR,width=(int)" + to_string(width) +
-                               ",height=(int)" + to_string(height) + ",framerate=30/1";
+                               ",height=(int)" + to_string(height) + ",framerate=30/1" +
+                               ",pixel-aspect-ratio=1/1";
               tex_writer_.reset();
               tex_writer_ = std::make_unique<ShmdataWriter>(
                   this, make_file_name("texture"), texture.size(), data_type);

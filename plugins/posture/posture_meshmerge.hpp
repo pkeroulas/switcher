@@ -65,8 +65,21 @@ class PostureMeshMerge : public Quiddity, public StartableQuiddity {
   std::map<int, std::string> mesh_readers_caps_{};
   std::unique_ptr<ShmdataWriter> mesh_writer_{};
 
-  bool init() final;
+  std::vector<bool> cameras_updated_{};
+  std::vector<std::vector<uint8_t>> images_{};
+  std::vector<std::vector<uint32_t>> images_dims_{};
 
+  std::atomic_bool update_loop_started_{false};
+  std::atomic_bool update_wanted_{false};
+  std::mutex update_mutex_;
+  std::condition_variable update_cv_;
+  std::thread update_thread_;
+
+  bool init() final;
+  void update_loop();
+
+  bool all(const std::vector<bool>& status);
+  void zero(std::vector<bool>& status);
   bool connect(std::string shmdata_socket_path);
   bool disconnect(std::string shmName);
   bool disconnect_all();

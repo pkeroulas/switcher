@@ -58,7 +58,7 @@ class PostureSrc : public Quiddity, public StartableQuiddity {
   bool build_mesh_{false};
   int build_mesh_edge_length_{1};
   PContainer::prop_id_t build_mesh_edge_length_id_{0};
-  bool compress_cloud_{false};
+  bool compress_{false};
   bool reload_calibration_{false};
   bool downsample_{false};
   double downsample_resolution_{0.1};
@@ -68,6 +68,7 @@ class PostureSrc : public Quiddity, public StartableQuiddity {
   PContainer::prop_id_t filter_mean_k_id_{0};
   double filter_stddev_mul_{1.0};
   PContainer::prop_id_t filter_stddev_mul_id_{0};
+  int clipping_distance_{2500};
   int bilateral_filter_kernel_size_{5};
   double bilateral_filter_sigma_pos_{5.f};
   double bilateral_filter_sigma_value_{1000.f};

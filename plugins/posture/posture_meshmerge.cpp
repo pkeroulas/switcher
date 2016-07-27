@@ -38,20 +38,27 @@ PostureMeshMerge::PostureMeshMerge(const std::string&) : shmcntr_(static_cast<Qu
 PostureMeshMerge::~PostureMeshMerge() { stop(); }
 
 bool PostureMeshMerge::start() {
+  cameras_updated_.resize(source_id_);
+
   calibration_reader_ = unique_ptr<CalibrationReader>(new CalibrationReader(calibration_path_));
   merger_ = make_shared<MeshMerger>(source_id_);
   merger_->setCalibration(calibration_reader_->getCalibrationParams());
   merger_->setApplyCalibration(apply_calibration_);
 
   merger_->start();
+  update_loop_started_ = true;
+  update_thread_ = thread([&]() { update_loop(); });
 
   return true;
 }
 
 bool PostureMeshMerge::stop() {
-  lock_guard<mutex> lock(mutex_);
-  lock_guard<mutex> lockUpdate(updateMutex_);
+  update_loop_started_ = false;
+  unique_lock<mutex> lockUpdate(update_mutex_);
+  update_cv_.notify_one();
+  if (update_thread_.joinable()) update_thread_.join();
 
+  lock_guard<mutex> lock(mutex_);
   if (merger_ != nullptr) {
     merger_->stop();
     merger_.reset();
@@ -107,6 +114,39 @@ bool PostureMeshMerge::init() {
   return true;
 }
 
+void PostureMeshMerge::update_loop() {
+  while (update_loop_started_) {
+    unique_lock<mutex> lock(update_mutex_);
+    if (!update_wanted_) update_cv_.wait(lock);
+
+    update_wanted_ = false;
+
+    if (!update_loop_started_) break;
+
+    if (reload_calibration_) {
+      calibration_reader_->loadCalibration(calibration_path_);
+      merger_->setCalibration(calibration_reader_->getCalibrationParams());
+    }
+
+    auto mesh = vector<unsigned char>();
+    merger_->getMesh(mesh);
+
+    if (mesh.size() != 0) {
+      if (mesh_writer_ == nullptr ||
+          mesh.size() > mesh_writer_->writer<MPtr(&shmdata::Writer::alloc_size)>()) {
+        auto data_type = string(POLYGONMESH_TYPE_BASE);
+        mesh_writer_.reset();
+        mesh_writer_ = std::make_unique<ShmdataWriter>(
+            this, make_file_name("mesh"), std::max(mesh.size() * 2, (size_t)1024), data_type);
+      }
+
+      mesh_writer_->writer<MPtr(&shmdata::Writer::copy_to_shm)>(
+          const_cast<unsigned char*>(mesh.data()), mesh.size());
+      mesh_writer_->bytes_written(mesh.size());
+    }
+  }
+}
+
 bool PostureMeshMerge::connect(std::string shmdata_socket_path) {
   unique_lock<mutex> connectLock(connect_mutex_);
 
@@ -132,33 +172,13 @@ bool PostureMeshMerge::connect(std::string shmdata_socket_path) {
 
         merger_->setInputMesh(index, vector<uint8_t>((uint8_t*)data, (uint8_t*)data + size));
 
-        if (!worker_.is_ready() || !updateMutex_.try_lock()) return;
-
-        worker_.set_task([&]() {
-          if (reload_calibration_) {
-            calibration_reader_->loadCalibration(calibration_path_);
-            merger_->setCalibration(calibration_reader_->getCalibrationParams());
-          }
-
-          auto mesh = vector<unsigned char>();
-          merger_->getMesh(mesh);
-
-          if (mesh.size() != 0) {
-            if (mesh_writer_ == nullptr ||
-                mesh.size() > mesh_writer_->writer<MPtr(&shmdata::Writer::alloc_size)>()) {
-              auto data_type = string(POLYGONMESH_TYPE_BASE);
-              mesh_writer_.reset();
-              mesh_writer_ = std::make_unique<ShmdataWriter>(
-                  this, make_file_name("mesh"), std::max(mesh.size() * 2, (size_t)1024), data_type);
-            }
-
-            mesh_writer_->writer<MPtr(&shmdata::Writer::copy_to_shm)>(
-                const_cast<unsigned char*>(mesh.data()), mesh.size());
-            mesh_writer_->bytes_written(mesh.size());
-          }
-
-          updateMutex_.unlock();
-        });
+        bool already_updated = cameras_updated_[index];
+        cameras_updated_[index] = true;
+        if (already_updated || all(cameras_updated_)) {
+          zero(cameras_updated_);
+          update_wanted_ = true;
+          update_cv_.notify_one();
+        }
       },
       [=](string caps) {
         unique_lock<mutex> lock(mutex_);
@@ -177,6 +197,17 @@ bool PostureMeshMerge::disconnect(std::string) {
 bool PostureMeshMerge::disconnect_all() {
   source_id_ = 0;
   return true;
+}
+
+bool PostureMeshMerge::all(const vector<bool>& status) {
+  for (auto s : status)
+    if (!s) return false;
+
+  return true;
+}
+
+void PostureMeshMerge::zero(vector<bool>& status) {
+  for (uint32_t i = 0; i < status.size(); ++i) status[i] = false;
 }
 
 bool PostureMeshMerge::can_sink_caps(std::string caps) { return (caps == POLYGONMESH_TYPE_BASE); }

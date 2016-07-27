@@ -215,8 +215,8 @@ void PostureScan3DGPU::update_loop() {
             this,
             make_file_name("texture"),
             texture.size() * 2,
-            "video/x-raw,format=(string)RGB,width=(int)" + to_string(width) + ",height=(int)" +
-                to_string(height) + ",framerate=30/1");
+            "video/x-raw, format=(string)RGB, width=(int)" + to_string(width) + ", height=(int)" +
+                to_string(height) + ", framerate=30/1, pixel-aspect-ratio=1/1");
 
         if (!texture_writer_) {
           g_warning("Unable to create texture writer");

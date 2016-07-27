@@ -61,7 +61,7 @@ bool PostureSrc::start() {
     zcamera_->setDeviceIndex(device_index_);
     zcamera_->setCaptureIR(capture_ir_);
     zcamera_->setBuildMesh(build_mesh_);
-    zcamera_->setCompression(compress_cloud_);
+    zcamera_->setCompression(compress_);
     zcamera_->setCaptureMode((posture::ZCamera::CaptureMode)capture_modes_enum_.get());
     zcamera_->setOutlierFilterParameters(filter_outliers_, filter_mean_k_, filter_stddev_mul_);
 
@@ -198,15 +198,16 @@ bool PostureSrc::init() {
       "Build a mesh from the cloud",
       build_mesh_);
 
-  pmanage<MPtr(&PContainer::make_bool)>("compress_cloud",
+  pmanage<MPtr(&PContainer::make_bool)>("compress",
                                         [this](const bool& val) {
-                                          compress_cloud_ = val;
+                                          compress_ = val;
+                                          zcamera_->setCompression(compress_);
                                           return true;
                                         },
-                                        [this]() { return compress_cloud_; },
-                                        "Compress cloud",
-                                        "Compress the cloud if true",
-                                        compress_cloud_);
+                                        [this]() { return compress_; },
+                                        "Compress cloud and mesh",
+                                        "Compress the outputs if true",
+                                        compress_);
 
   pmanage<MPtr(&PContainer::make_bool)>("reload_calibration",
                                         [this](const bool& val) {
@@ -250,6 +251,21 @@ bool PostureSrc::init() {
   //
   // Filtering
   pmanage<MPtr(&PContainer::make_group)>("filtering", "Filtering", "Filtering");
+
+  pmanage<MPtr(&PContainer::make_parented_int)>(
+      "clipping_distance",
+      "filtering",
+      [this](const int& val) {
+        clipping_distance_ = val;
+        if (zcamera_) zcamera_->setClippingDistance(clipping_distance_);
+        return true;
+      },
+      [this]() { return clipping_distance_; },
+      "Clipping distance",
+      "Clipping distance for mesh and cloud creation",
+      clipping_distance_,
+      1,
+      10000);
 
   pmanage<MPtr(&PContainer::make_parented_int)>("bilateral_filter_kernel_size",
                                                 "filtering",
@@ -430,7 +446,7 @@ void PostureSrc::cb_frame_cloud(void* context, const vector<char>&& data) {
   if (!ctx->cloud_writer_ ||
       data.size() > ctx->cloud_writer_->writer<MPtr(&shmdata::Writer::alloc_size)>()) {
     auto data_type =
-        ctx->compress_cloud_ ? string(POINTCLOUD_TYPE_COMPRESSED) : string(POINTCLOUD_TYPE_BASE);
+        ctx->compress_ ? string(POINTCLOUD_TYPE_COMPRESSED) : string(POINTCLOUD_TYPE_BASE);
     ctx->cloud_writer_.reset();
     ctx->cloud_writer_ = std::make_unique<ShmdataWriter>(
         ctx, ctx->make_file_name("cloud"), data.size() * 2, data_type);
