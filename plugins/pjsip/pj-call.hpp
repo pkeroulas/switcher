@@ -41,7 +41,7 @@ class SIPPlugin;
 class PJCall {
  public:
   PJCall();
-  ~PJCall(){};
+  ~PJCall() = default;
   PJCall(const PJCall&) = delete;
   PJCall& operator=(const PJCall&) = delete;
   void finalize_calls();
@@ -112,6 +112,7 @@ class PJCall {
   Quiddity::ptr retrieve_rtp_manager();
   static gboolean send_to(gchar* sip_url, void* user_data);
   void make_hang_up(pjsip_inv_session* inv);
+  static gboolean hang_up_incoming(const gchar* sip_url, void* user_data);
   static gboolean hang_up(const gchar* sip_url, void* user_data);
   static gboolean attach_shmdata_to_contact(const gchar* shmpath,
                                             const gchar* contact_uri,

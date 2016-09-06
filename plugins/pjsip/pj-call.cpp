@@ -114,6 +114,18 @@ PJCall::PJCall() {
                                    G_TYPE_BOOLEAN,
                                    Method::make_arg_type_description(G_TYPE_STRING, nullptr),
                                    this);
+  SIPPlugin::this_->install_method("Hang Up Incoming",                      // long name
+                                   "hang-up-incoming",                      // name
+                                   "Hang up an incoming call",              // description
+                                   "success of not",                        // return description
+                                   Method::make_arg_description("SIP url",  // long name
+                                                                "url",      // name
+                                                                "string",   // description
+                                                                nullptr),
+                                   (Method::method_ptr)&hang_up_incoming,
+                                   G_TYPE_BOOLEAN,
+                                   Method::make_arg_type_description(G_TYPE_STRING, nullptr),
+                                   this);
   SIPPlugin::this_->install_method(
       "Attach Shmdata To Contact",                  // long name
       "attach_shmdata_to_contact",                  // name
@@ -254,8 +266,8 @@ bool PJCall::release_outgoing_call(call_t* call, pjsua_buddy_id id) {
   return true;
 }
 
-void PJCall::on_inv_state_confirmed(call_t* call, pjsip_inv_session* /*inv*/, pjsua_buddy_id id) {
-  g_debug("Call connected");
+void PJCall::on_inv_state_confirmed(call_t* call, pjsip_inv_session* inv, pjsua_buddy_id id) {
+  g_debug("Call connected, inv: %p", inv);
   // updating call status in the tree
   InfoTree::ptr tree =
       SIPPlugin::this_->prune_tree(std::string(".buddies." + std::to_string(id)),
@@ -306,9 +318,11 @@ void PJCall::on_inv_state_connecting(call_t* call, pjsip_inv_session* /*inv*/, p
 
 /* Callback to be called when invite session's state has changed: */
 void PJCall::call_on_state_changed(pjsip_inv_session* inv, pjsip_event* /*e*/) {
+  g_debug("state changed");
   if (!SIPPlugin::this_ || !SIPPlugin::this_->sip_calls_.get()) {
     return;
   }
+  g_debug("receiving stuff");
 
   call_t* call = (call_t*)inv->mod_data[mod_siprtp_.id];
   switch (inv->state) {
@@ -945,6 +959,45 @@ gboolean PJCall::send_to(gchar* sip_url, void* user_data) {
   return TRUE;
 }
 
+gboolean PJCall::hang_up_incoming(const gchar* sip_url, void* user_data) {
+  if (nullptr == sip_url || nullptr == user_data) {
+    g_warning("hang up received nullptr url");
+    return FALSE;
+  }
+
+  PJCall* context = static_cast<PJCall*>(user_data);
+  std::unique_lock<std::mutex> lock(context->call_m_, std::defer_lock);
+
+  context->is_hanging_up_ = true;
+  On_scope_exit { context->is_hanging_up_ = false; };
+
+  auto it_inc = std::find_if(
+      context->incoming_call_.begin(),
+      context->incoming_call_.end(),
+      [&sip_url](const call_t& call) {
+        return (std::string(sip_url /* "jsoria2@sip.scenic.sat.qc.ca"*/) == call.peer_uri);
+      });
+
+  if (it_inc != context->incoming_call_.end()) {
+    SIPPlugin::this_->pjsip_->run_async([&]() { context->make_hang_up((*it_inc).inv); });
+    context->call_cv_.wait(lock, [&context]() {
+      if (context->call_action_done_) {
+        context->call_action_done_ = false;
+        return true;
+      }
+      return false;
+    });
+    return TRUE;
+  }
+  //
+  //   return TRUE;
+  // } else
+  //   g_debug("incoming call not found");
+  //
+  // return FALSE;
+  return TRUE;
+}
+
 gboolean PJCall::hang_up(const gchar* sip_url, void* user_data) {
   if (nullptr == sip_url || nullptr == user_data) {
     g_warning("hang up received nullptr url");
@@ -980,23 +1033,23 @@ gboolean PJCall::hang_up(const gchar* sip_url, void* user_data) {
       return TRUE;
     }
 
-    auto it_inc = std::find_if(
-        context->incoming_call_.begin(),
-        context->incoming_call_.end(),
-        [&sip_url](const call_t& call) { return (std::string(sip_url) == call.peer_uri); });
-
-    if (it_inc != context->incoming_call_.end()) {
-      SIPPlugin::this_->pjsip_->run_async([&]() { context->make_hang_up((*it_inc).inv); });
-      context->call_cv_.wait(lock, [&context]() {
-        if (context->call_action_done_) {
-          context->call_action_done_ = false;
-          return true;
-        }
-        return false;
-      });
-
-      return TRUE;
-    }
+    // auto it_inc = std::find_if(
+    //     context->incoming_call_.begin(),
+    //     context->incoming_call_.end(),
+    //     [&sip_url](const call_t& call) { return (std::string(sip_url) == call.peer_uri); });
+    //
+    // if (it_inc != context->incoming_call_.end()) {
+    //   SIPPlugin::this_->pjsip_->run_async([&]() { context->make_hang_up((*it_inc).inv); });
+    //   context->call_cv_.wait(lock, [&context]() {
+    //     if (context->call_action_done_) {
+    //       context->call_action_done_ = false;
+    //       return true;
+    //     }
+    //     return false;
+    //   });
+    //
+    //   return TRUE;
+    // }
   }
   return FALSE;
 }
@@ -1005,11 +1058,15 @@ void PJCall::make_hang_up(pjsip_inv_session* inv) {
   pjsip_tx_data* tdata;
   pj_status_t status;
 
+  g_debug("make_hang_up called, inv: %p", inv);
   status = pjsip_inv_end_session(inv, 603, nullptr, &tdata);
 
-  if (status == PJ_SUCCESS && tdata != nullptr)
+  if (status == PJ_SUCCESS && tdata != nullptr) {
     pjsip_inv_send_msg(inv, tdata);
-  else
+    g_debug("BYE was sent, code: %d reason: %s!",
+            tdata->msg->line.status.code,
+            tdata->msg->line.status.reason.ptr);
+  } else
     g_warning("BYE has not been sent");
 }
 
