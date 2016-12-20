@@ -220,7 +220,10 @@ bool QuiddityManager_Impl::init_quiddity(Quiddity::ptr quiddity) {
 
   quiddities_[quiddity->get_name()] = quiddity;
 
-  for (auto& cb : on_created_cbs_) cb.second(quiddity->get_name());
+  for (auto& cb : on_created_cbs_) {
+    cb.second(quiddity->get_name());
+    if (on_created_cbs_.empty()) break;  // In case a callback resets the list, e.g bundle.
+  }
 
   return true;
 }
@@ -352,7 +355,10 @@ bool QuiddityManager_Impl::remove(const std::string& quiddity_name, bool call_re
   for (auto& it : signal_subscribers_) it.second->unsubscribe(q_it->second);
   quiddities_.erase(quiddity_name);
   if (call_removal_cb) {
-    for (auto& cb : on_removed_cbs_) cb.second(quiddity_name);
+    for (auto& cb : on_removed_cbs_) {
+      cb.second(quiddity_name);
+      if (on_removed_cbs_.empty()) break;  // In case a callback resets the list, e.g bundle.
+    }
   }
   return true;
 }
