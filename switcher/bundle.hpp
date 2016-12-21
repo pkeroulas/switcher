@@ -53,6 +53,8 @@ class Bundle : public Quiddity, public StartableQuiddity {
   };
 
  private:
+  std::vector<std::pair<std::string /*quid_name*/, std::string /*shmpath*/>> connected_shms_{};
+  std::mutex connected_shms_mtx_{};
   std::vector<std::string> start_quids_{};
   std::string reader_quid_{};
   ShmdataConnector shmcntr_;
@@ -60,8 +62,6 @@ class Bundle : public Quiddity, public StartableQuiddity {
   std::string pipeline_{};
   doc_getter_t doc_getter_{};
   QuiddityManager::ptr manager_;
-  std::mutex connected_shms_mtx_{};
-  std::vector<std::pair<std::string /*quid_name*/, std::string /*shmpath*/>> connected_shms_{};
 
   bool start() final;
   bool stop() final;
