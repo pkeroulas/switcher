@@ -349,20 +349,43 @@ Quiddity::ptr QuiddityManager_Impl::get_quiddity(const std::string& quiddity_nam
 }
 
 bool QuiddityManager_Impl::remove(const std::string& quiddity_name, bool call_removal_cb) {
+  std::cout << "<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< file: " << __FILE__
+            << ", line:" << __LINE__ << std::endl;
   auto q_it = quiddities_.find(quiddity_name);
+  std::cout << "<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< file: " << __FILE__
+            << ", line:" << __LINE__ << std::endl;
   if (quiddities_.end() == q_it) {
     g_warning("(%s) quiddity %s not found for removing", name_.c_str(), quiddity_name.c_str());
     return false;
   }
+  std::cout << "<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< file: " << __FILE__
+            << ", line:" << __LINE__ << std::endl;
   for (auto& it : signal_subscribers_) it.second->unsubscribe(q_it->second);
+  std::cout << "<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< file: " << __FILE__
+            << ", line:" << __LINE__ << std::endl;
   quiddities_.erase(quiddity_name);
+  std::cout << "<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< file: " << __FILE__
+            << ", line:" << __LINE__ << std::endl;
   if (call_removal_cb) {
+    std::cout << "<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< file: " << __FILE__
+              << ", line:" << __LINE__ << std::endl;
+
     // We work on a copy in case a callback modifies the map of registered callbacks
     auto tmp_removed_cbs_ = on_removed_cbs_;
+    std::cout << "<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< file: " << __FILE__
+              << ", line:" << __LINE__ << std::endl;
     for (auto& cb : tmp_removed_cbs_) {
+      std::cout << "<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< file: " << __FILE__
+                << ", line:" << __LINE__ << std::endl;
       cb.second(quiddity_name);
+      std::cout << "<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< file: " << __FILE__
+                << ", line:" << __LINE__ << std::endl;
       if (on_removed_cbs_.empty()) break;  // In case the map gets reset in the callback, e.g bundle
+      std::cout << "<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< file: " << __FILE__
+                << ", line:" << __LINE__ << std::endl;
     }
+    std::cout << "<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< file: " << __FILE__
+              << ", line:" << __LINE__ << std::endl;
   }
   return true;
 }
